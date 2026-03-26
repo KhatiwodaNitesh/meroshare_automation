@@ -25,6 +25,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      - name: Create auth directory
+        run: mkdir -p playwright/.auth
+
       - name: Run MeroShare automation
         env:
           URL: ${{ secrets.URL }}
