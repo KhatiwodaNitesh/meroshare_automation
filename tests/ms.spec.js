@@ -37,7 +37,7 @@ async function selectBank(page) {
 async function goToASBA(page) {
     await page.goto(`${BASE_URL}dashboard`);
     await page.getByRole('link', { name: 'My ASBA' }).click();
-    await expect(page).toHaveURL(`${BASE_URL}asba`);
+    await expect(page).toHaveURL(/asba/);
 }
 
 // --- Helper: Apply for a single share ---
@@ -98,7 +98,7 @@ test.describe.serial('Mero Share Automation', () => {
         );
 
         await page.getByRole('link', { name: 'My ASBA' }).click();
-        await expect(page).toHaveURL(`${BASE_URL}asba`);
+        await expect(page).toHaveURL(/asba/);
 
         const response = await responsePromise;
         const allShares = (await response.json()).object;
@@ -127,7 +127,7 @@ test.describe.serial('Mero Share Automation', () => {
     test('Calculate Purchase Source', async ({ page }) => {
         await page.goto(`${BASE_URL}dashboard`);
         await page.getByRole('link', { name: 'My Purchase Source' }).click();
-        await expect(page).toHaveURL(`${BASE_URL}purchase`);
+        await expect(page).toHaveURL(/purchase/);
 
         await page.locator('#script').click();
 
