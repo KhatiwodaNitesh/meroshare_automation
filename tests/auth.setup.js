@@ -47,5 +47,6 @@ setup('authenticate', async ({ page }) => {
         }
         return data;
     });
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
     fs.writeFileSync(sessionFile, JSON.stringify(sessionData));
 });
