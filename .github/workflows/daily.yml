@@ -2,7 +2,7 @@ name: Daily MeroShare Automation
 
 on:
   schedule:
-    - cron: '15 3 * * *'  # Runs daily at 9:00 AM Nepal Time (UTC+5:45)
+    - cron: '15 7 * * *'  # Runs daily at 1:00 PM Nepal Time (UTC+5:45)
   workflow_dispatch:       # Allow manual trigger from GitHub UI
 
 jobs:
