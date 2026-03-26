@@ -1,0 +1,46 @@
+name: Daily MeroShare Automation
+
+on:
+  schedule:
+    - cron: '15 3 * * *'  # Runs daily at 9:00 AM Nepal Time (UTC+5:45)
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run MeroShare automation
+        env:
+          URL: ${{ secrets.URL }}
+          DP_NAME: ${{ secrets.DP_NAME }}
+          MS_USERNAME: ${{ secrets.MS_USERNAME }}
+          MS_PASSWORD: ${{ secrets.MS_PASSWORD }}
+          DMAT_BANK_NAME: ${{ secrets.DMAT_BANK_NAME }}
+          CRN_NO: ${{ secrets.CRN_NO }}
+          KITTA_NO: ${{ secrets.KITTA_NO }}
+          TRANS_PIN: ${{ secrets.TRANS_PIN }}
+        run: npx playwright test --project=setup --project=chromium
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
