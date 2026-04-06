@@ -126,8 +126,7 @@ async function selectAccount(page) {
 
 // --- Helper: Navigate to My ASBA page ---
 async function goToASBA(page) {
-    await page.goto(`${BASE_URL}dashboard`);
-    await page.getByRole('link', { name: 'My ASBA' }).click();
+    await page.goto(`${BASE_URL}asba`);
     await expect(page).toHaveURL(/asba/);
 }
 
@@ -158,12 +157,12 @@ async function applyForShare(page, share) {
     await expect(page.locator('#disclaimer')).toBeChecked();
 
     await page.getByRole('button', { name: /proceed/i }).click();
-    await expect(page.locator('#transactionPIN')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('#transactionPIN')).toBeVisible({ timeout: 15000 });
 
     await page.fill('#transactionPIN', ENV.transactionPin);
     const applyButton = page.getByRole('button', { name: 'Apply' });
-    await expect(applyButton).toBeVisible({ timeout: 30000 });
-    await expect(applyButton).toBeEnabled({ timeout: 30000 });
+    await expect(applyButton).toBeVisible({ timeout: 15000 });
+    await expect(applyButton).toBeEnabled({ timeout: 15000 });
 
     const seenCompanySharePosts = [];
     let dialogInfo = null;
@@ -194,7 +193,7 @@ async function applyForShare(page, share) {
                     resp.request().method() === 'POST' &&
                     resp.url().includes('/api/meroShare/companyShare/') &&
                     !resp.url().includes('/applicableIssue/'),
-                { timeout: 90000 }
+                { timeout: 20000 }
             ),
             applyButton.click(),
         ]);
@@ -225,12 +224,9 @@ async function applyForShare(page, share) {
 test.describe.serial('Mero Share Automation', () => {
 
     test('Apply Share', async ({ page }) => {
-        test.setTimeout(process.env.CI ? 180000 : 60000);
+        test.setTimeout(process.env.CI ? 90000 : 60000);
 
-        await page.goto(`${BASE_URL}dashboard`);
-
-        await page.getByRole('link', { name: 'My ASBA' }).click();
-        await expect(page).toHaveURL(/asba/);
+        await goToASBA(page);
 
         // Intercept the applicable shares API response
         const responsePromise = page.waitForResponse(
