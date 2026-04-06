@@ -12,6 +12,16 @@ const ENV = {
     crn: process.env.CRN_NO,
     transactionPin: process.env.TRANS_PIN,
 };
+const IS_CI = !!process.env.CI;
+
+function ciLog(message, payload) {
+    if (!IS_CI) return;
+    if (payload === undefined) {
+        console.log(`[CI][DEBUG] ${message}`);
+        return;
+    }
+    console.log(`[CI][DEBUG] ${message}: ${JSON.stringify(payload)}`);
+}
 
 // --- Session Setup ---
 test.beforeEach(async ({ page }) => {
@@ -65,11 +75,53 @@ async function selectBank(page) {
     );
 
     if (!matchedOption) {
+        ciLog('Bank dropdown options', options.map((option) => option.label).filter(Boolean));
         throw new Error(`Bank not found in dropdown: ${bankName}`);
     }
 
     await bankSelect.selectOption(matchedOption.value);
     await expect(bankSelect).toHaveValue(matchedOption.value);
+    ciLog('Selected bank', matchedOption.label);
+}
+
+// --- Helper: Select first available account from dropdown ---
+async function selectAccount(page) {
+    const accountSelect = page.locator('#accountNumber');
+    await expect(accountSelect).toBeVisible();
+
+    await expect.poll(
+        async () =>
+            accountSelect.locator('option').evaluateAll((nodes) =>
+                nodes
+                    .map((node) => ({
+                        value: node.value,
+                        label: node.textContent?.trim() ?? '',
+                    }))
+                    .filter((option) => option.value && option.label)
+            ),
+        {
+            message: 'Waiting for account options to load',
+            timeout: 30000,
+        }
+    ).not.toHaveLength(0);
+
+    const options = await accountSelect.locator('option').evaluateAll((nodes) =>
+        nodes
+            .map((node) => ({
+                value: node.value,
+                label: node.textContent?.trim() ?? '',
+            }))
+            .filter((option) => option.value && option.label)
+    );
+
+    if (options.length === 0) {
+        throw new Error('No account options available in account dropdown.');
+    }
+
+    const selectedAccount = options[0];
+    await accountSelect.selectOption(selectedAccount.value);
+    await expect(accountSelect).toHaveValue(selectedAccount.value);
+    ciLog('Selected account', selectedAccount.label);
 }
 
 // --- Helper: Navigate to My ASBA page ---
@@ -95,8 +147,7 @@ async function applyForShare(page, share) {
     // Fill application form
     await selectBank(page);
 
-    const accountValue = await page.locator('#accountNumber option').nth(1).getAttribute('value');
-    await page.selectOption('#accountNumber', accountValue);
+    await selectAccount(page);
 
     await page.fill('#appliedKitta', ENV.kitta);
     await expect(page.locator('#appliedKitta')).toHaveValue(ENV.kitta);
@@ -114,15 +165,45 @@ async function applyForShare(page, share) {
     await expect(applyButton).toBeVisible({ timeout: 30000 });
     await expect(applyButton).toBeEnabled({ timeout: 30000 });
 
-    const [applyResponse] = await Promise.all([
-        page.waitForResponse(
-            (resp) =>
-                resp.url().includes('/api/meroShare/companyShare/') &&
-                resp.request().method() === 'POST',
-            { timeout: 60000 }
-        ),
-        applyButton.click(),
-    ]);
+    const seenCompanySharePosts = [];
+    const responseListener = (resp) => {
+        if (resp.request().method() === 'POST' && resp.url().includes('/api/meroShare/companyShare/')) {
+            seenCompanySharePosts.push({
+                status: resp.status(),
+                url: resp.url(),
+            });
+        }
+    };
+
+    page.on('response', responseListener);
+    let applyResponse;
+    try {
+        [applyResponse] = await Promise.all([
+            page.waitForResponse(
+                (resp) =>
+                    resp.request().method() === 'POST' &&
+                    resp.url().includes('/api/meroShare/companyShare/') &&
+                    !resp.url().includes('/applicableIssue/'),
+                { timeout: 90000 }
+            ),
+            applyButton.click(),
+        ]);
+    } catch (error) {
+        const alerts = await page
+            .locator('[role="alert"], .toast-message, .error, .invalid-feedback, .mat-error')
+            .allTextContents()
+            .catch(() => []);
+        ciLog('Apply request not observed', {
+            companyName: share.companyName,
+            applyButtonEnabled: await applyButton.isEnabled().catch(() => false),
+            transactionPinLength: await page.locator('#transactionPIN').inputValue().then((v) => v.length).catch(() => 0),
+            seenCompanySharePosts,
+            alerts: alerts.map((t) => t.trim()).filter(Boolean).slice(0, 6),
+        });
+        throw error;
+    } finally {
+        page.off('response', responseListener);
+    }
 
     expect(applyResponse.status()).toBe(201);
     console.log(`✅ Applied for: ${share.companyName}`);
