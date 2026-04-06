@@ -29,8 +29,30 @@ test.beforeEach(async ({ page }) => {
 
 // --- Helper: Select bank from dropdown ---
 async function selectBank(page) {
-    await page.locator('#selectBank').selectOption({ label: new RegExp(ENV.bankName, 'i') });
-    await expect(page.locator('#selectBank')).toContainText(ENV.bankName);
+    const bankSelect = page.locator('#selectBank');
+    const bankName = ENV.bankName?.trim();
+
+    if (!bankName) {
+        throw new Error('DMAT_BANK_NAME is missing or empty in the environment.');
+    }
+
+    const options = await bankSelect.locator('option').evaluateAll((nodes) =>
+        nodes.map((node) => ({
+            value: node.value,
+            label: node.textContent?.trim() ?? '',
+        }))
+    );
+
+    const matchedOption = options.find((option) =>
+        option.label.toLowerCase().includes(bankName.toLowerCase())
+    );
+
+    if (!matchedOption) {
+        throw new Error(`Bank not found in dropdown: ${bankName}`);
+    }
+
+    await bankSelect.selectOption(matchedOption.value);
+    await expect(bankSelect).toHaveValue(matchedOption.value);
 }
 
 // --- Helper: Navigate to My ASBA page ---
@@ -90,15 +112,15 @@ test.describe.serial('Mero Share Automation', () => {
     test('Apply Share', async ({ page }) => {
         await page.goto(`${BASE_URL}dashboard`);
 
+        await page.getByRole('link', { name: 'My ASBA' }).click();
+        await expect(page).toHaveURL(/asba/);
+
         // Intercept the applicable shares API response
         const responsePromise = page.waitForResponse(
             (resp) =>
                 resp.url().includes('/api/meroShare/companyShare/applicableIssue/') &&
                 resp.request().method() === 'POST'
         );
-
-        await page.getByRole('link', { name: 'My ASBA' }).click();
-        await expect(page).toHaveURL(/asba/);
 
         const response = await responsePromise;
         const allShares = (await response.json()).object;
