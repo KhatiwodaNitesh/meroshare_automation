@@ -166,6 +166,7 @@ async function applyForShare(page, share) {
     await expect(applyButton).toBeEnabled({ timeout: 30000 });
 
     const seenCompanySharePosts = [];
+    let dialogInfo = null;
     const responseListener = (resp) => {
         if (resp.request().method() === 'POST' && resp.url().includes('/api/meroShare/companyShare/')) {
             seenCompanySharePosts.push({
@@ -174,8 +175,17 @@ async function applyForShare(page, share) {
             });
         }
     };
+    const dialogListener = async (dialog) => {
+        dialogInfo = {
+            type: dialog.type(),
+            message: dialog.message(),
+        };
+        ciLog('Browser dialog before apply', dialogInfo);
+        await dialog.accept();
+    };
 
     page.on('response', responseListener);
+    page.on('dialog', dialogListener);
     let applyResponse;
     try {
         [applyResponse] = await Promise.all([
@@ -197,12 +207,14 @@ async function applyForShare(page, share) {
             companyName: share.companyName,
             applyButtonEnabled: await applyButton.isEnabled().catch(() => false),
             transactionPinLength: await page.locator('#transactionPIN').inputValue().then((v) => v.length).catch(() => 0),
+            dialogInfo,
             seenCompanySharePosts,
             alerts: alerts.map((t) => t.trim()).filter(Boolean).slice(0, 6),
         });
         throw error;
     } finally {
         page.off('response', responseListener);
+        page.off('dialog', dialogListener);
     }
 
     expect(applyResponse.status()).toBe(201);
