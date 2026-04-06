@@ -107,18 +107,23 @@ async function applyForShare(page, share) {
     await expect(page.locator('#disclaimer')).toBeChecked();
 
     await page.getByRole('button', { name: /proceed/i }).click();
-
-    // Wait for apply API response before clicking Apply
-    const applyResponsePromise = page.waitForResponse(
-        (resp) =>
-            resp.url().includes('/api/meroShare/companyShare/') &&
-            resp.request().method() === 'POST'
-    );
+    await expect(page.locator('#transactionPIN')).toBeVisible({ timeout: 30000 });
 
     await page.fill('#transactionPIN', ENV.transactionPin);
-    await page.getByRole('button', { name: 'Apply' }).click();
+    const applyButton = page.getByRole('button', { name: 'Apply' });
+    await expect(applyButton).toBeVisible({ timeout: 30000 });
+    await expect(applyButton).toBeEnabled({ timeout: 30000 });
 
-    const applyResponse = await applyResponsePromise;
+    const [applyResponse] = await Promise.all([
+        page.waitForResponse(
+            (resp) =>
+                resp.url().includes('/api/meroShare/companyShare/') &&
+                resp.request().method() === 'POST',
+            { timeout: 60000 }
+        ),
+        applyButton.click(),
+    ]);
+
     expect(applyResponse.status()).toBe(201);
     console.log(`✅ Applied for: ${share.companyName}`);
 }
@@ -127,6 +132,8 @@ async function applyForShare(page, share) {
 test.describe.serial('Mero Share Automation', () => {
 
     test('Apply Share', async ({ page }) => {
+        test.setTimeout(process.env.CI ? 180000 : 60000);
+
         await page.goto(`${BASE_URL}dashboard`);
 
         await page.getByRole('link', { name: 'My ASBA' }).click();
