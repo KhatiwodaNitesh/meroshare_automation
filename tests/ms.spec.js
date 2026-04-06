@@ -36,6 +36,23 @@ async function selectBank(page) {
         throw new Error('DMAT_BANK_NAME is missing or empty in the environment.');
     }
 
+    await expect(bankSelect).toBeVisible();
+    await expect.poll(
+        async () =>
+            bankSelect.locator('option').evaluateAll((nodes) =>
+                nodes
+                    .map((node) => ({
+                        value: node.value,
+                        label: node.textContent?.trim() ?? '',
+                    }))
+                    .filter((option) => option.value && option.label)
+            ),
+        {
+            message: 'Waiting for bank options to load',
+            timeout: 30000,
+        }
+    ).not.toHaveLength(0);
+
     const options = await bankSelect.locator('option').evaluateAll((nodes) =>
         nodes.map((node) => ({
             value: node.value,
