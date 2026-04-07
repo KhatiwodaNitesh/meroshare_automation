@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const REQUIRED_USER_FIELDS = [
     'dpName',
@@ -24,6 +25,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+dotenv.config({ path: path.resolve(projectRoot, '.env') });
 
 function fail(message) {
     throw new Error(message);
