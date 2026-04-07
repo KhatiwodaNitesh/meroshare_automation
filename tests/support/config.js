@@ -51,9 +51,18 @@ function readUserValue(activeUser, fieldName, envName) {
     return activeUser ? requireUserField(activeUser, fieldName) : requireEnv(envName);
 }
 
+function normalizeOriginUrl(rawUrl) {
+    return `${rawUrl.replace(/#.*$/, '').replace(/\/+$/, '')}/`;
+}
+
+function buildRouteUrl(originUrl, route = '') {
+    const normalizedRoute = route.replace(/^#?\/?/, '');
+    return normalizedRoute ? `${originUrl}#/${normalizedRoute}` : `${originUrl}#/`;
+}
+
 export const IS_CI = !!process.env.CI;
-export const URL = requireEnv('URL');
-export const BASE_URL = `${URL}#/`;
+export const URL = normalizeOriginUrl(requireEnv('URL'));
+export const BASE_URL = buildRouteUrl(URL);
 export const ACTIVE_USER = readActiveUser();
 export const ACTIVE_USER_ID = ACTIVE_USER ? requireUserField(ACTIVE_USER, 'id') : null;
 export const RUN_ID = readRunId(ACTIVE_USER);
@@ -73,3 +82,7 @@ export const MEROSHARE_ENV = {
     crn: readUserValue(ACTIVE_USER, 'crn', 'CRN_NO'),
     transactionPin: readUserValue(ACTIVE_USER, 'transactionPin', 'TRANS_PIN'),
 };
+
+export function appRoute(route = '') {
+    return buildRouteUrl(URL, route);
+}

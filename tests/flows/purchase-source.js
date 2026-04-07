@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test';
-import { BASE_URL } from '../support/config';
+import { appRoute } from '../support/config';
 
 export async function openPurchaseSource(page) {
-    await page.goto(`${BASE_URL}dashboard`, { waitUntil: 'domcontentloaded' });
+    await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: 'My Purchase Source' }).click();
     await expect(page).toHaveURL(/purchase/);
     await expect(page.locator('#script')).toBeVisible({ timeout: 30000 });

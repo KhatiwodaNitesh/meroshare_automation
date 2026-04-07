@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { attachCiArtifacts, attachCiPageDebug } from './support/ci-debug';
-import { BASE_URL } from './support/config';
+import { appRoute } from './support/config';
 import { injectSession, readSession } from './support/session';
 import {
     applyForShare,
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
     attachCiPageDebug(page);
     const session = readSession();
     await injectSession(page, session);
-    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+    await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('link', { name: /my asba/i })).toBeVisible({ timeout: 30000 });
 });
 

@@ -1,12 +1,14 @@
 import { expect } from '@playwright/test';
-import { BASE_URL, MEROSHARE_ENV } from '../support/config';
+import { MEROSHARE_ENV, appRoute } from '../support/config';
 import { ciLog } from '../support/ci-debug';
 import { selectFirstOption, selectOptionByLabel } from '../support/select';
 
 export async function goToASBA(page) {
-    await page.goto(`${BASE_URL}asba`, { waitUntil: 'domcontentloaded' });
+    await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
+    const myAsbaLink = page.getByRole('link', { name: /my asba/i });
+    await expect(myAsbaLink).toBeVisible({ timeout: 30000 });
+    await myAsbaLink.click();
     await expect(page).toHaveURL(/asba/);
-    await expect(page.locator('.company-list')).toBeVisible({ timeout: 30000 });
 }
 
 export async function getApplicableShares(page) {
@@ -18,7 +20,28 @@ export async function getApplicableShares(page) {
     );
 
     await goToASBA(page);
-    const response = await responsePromise;
+
+    let response;
+    try {
+        response = await responsePromise;
+    } catch (error) {
+        ciLog('Applicable shares request not observed', {
+            currentUrl: page.url(),
+            pageTitle: await page.title().catch(() => null),
+            alerts: await page
+                .locator('[role="alert"], .toast-message, .error, .invalid-feedback, .mat-error')
+                .allTextContents()
+                .then((texts) => texts.map((text) => text.trim()).filter(Boolean).slice(0, 6))
+                .catch(() => []),
+            myAsbaVisible: await page
+                .getByRole('link', { name: /my asba/i })
+                .isVisible()
+                .catch(() => false),
+            companyListVisible: await page.locator('.company-list').isVisible().catch(() => false),
+        });
+        throw error;
+    }
+
     const payload = await response.json();
     return payload.object ?? [];
 }

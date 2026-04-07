@@ -1,9 +1,9 @@
 import { expect } from '@playwright/test';
-import { AUTH_ENV, URL } from '../support/config';
+import { AUTH_ENV, appRoute } from '../support/config';
 import { captureSessionStorage, writeSession } from '../support/session';
 
 export async function loginAndPersistSession(page) {
-    await page.goto(URL, { waitUntil: 'domcontentloaded' });
+    await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle('Mero Share ');
     await page.locator('body').click();
     await page.getByText('Select your DP').click();
