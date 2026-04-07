@@ -1,6 +1,7 @@
-import { IS_CI } from './config';
+import { ACTIVE_USER_ID, IS_CI, RUN_ID } from './config';
 
 const PAGE_DEBUG = new WeakMap();
+const RUN_LABEL = ACTIVE_USER_ID ?? RUN_ID ?? 'unknown-user';
 
 function pushBounded(items, item, limit = 250) {
     items.push(item);
@@ -9,12 +10,13 @@ function pushBounded(items, item, limit = 250) {
 
 export function ciLog(message, payload) {
     if (!IS_CI) return;
+    const prefix = `[CI][${RUN_LABEL}]`;
     if (payload === undefined) {
-        console.log(`[CI][DEBUG] ${message}`);
+        console.log(`${prefix}[DEBUG] ${message}`);
         return;
     }
 
-    console.log(`[CI][DEBUG] ${message}: ${JSON.stringify(payload)}`);
+    console.log(`${prefix}[DEBUG] ${message}: ${JSON.stringify(payload)}`);
 }
 
 export function attachCiPageDebug(page) {
@@ -112,6 +114,7 @@ export async function attachCiArtifacts(page, testInfo) {
     page.off('dialog', listeners.dialogListener);
 
     const payload = {
+        userId: RUN_LABEL,
         title: testInfo.title,
         status: testInfo.status,
         expectedStatus: testInfo.expectedStatus,

@@ -3,7 +3,12 @@ name: Daily MeroShare Automation
 on:
   schedule:
     - cron: '15 7 * * *'  # Runs daily at 1:00 PM Nepal Time (UTC+5:45)
-  workflow_dispatch:       # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      user_ids:
+        description: 'Comma-separated user IDs to run, for example bhagawoti,nitesh. Leave blank to run all configured secrets.'
+        required: false
+        type: string
 
 jobs:
   run-automation:
@@ -28,14 +33,13 @@ jobs:
       - name: Run MeroShare automation
         env:
           URL: ${{ secrets.URL }}
-          DP_NAME: ${{ secrets.DP_NAME }}
-          MS_USERNAME: ${{ secrets.MS_USERNAME }}
-          MS_PASSWORD: ${{ secrets.MS_PASSWORD }}
-          DMAT_BANK_NAME: ${{ secrets.DMAT_BANK_NAME }}
-          CRN_NO: ${{ secrets.CRN_NO }}
-          KITTA_NO: ${{ secrets.KITTA_NO }}
-          TRANS_PIN: ${{ secrets.TRANS_PIN }}
-        run: npm run test:ci
+          BHAGAWOTI_ENV: ${{ secrets.BHAGAWOTI_ENV }}
+          KHILA_ENV: ${{ secrets.KHILA_ENV }}
+          NABIN_ENV: ${{ secrets.NABIN_ENV }}
+          NISHA_ENV: ${{ secrets.NISHA_ENV }}
+          NITESH_ENV: ${{ secrets.NITESH_ENV }}
+          USER_IDS: ${{ github.event.inputs.user_ids || '' }}
+        run: npm run test:ci:multi
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

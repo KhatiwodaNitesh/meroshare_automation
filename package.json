@@ -5,6 +5,7 @@
   "scripts": {
     "test": "playwright test",
     "test:ci": "playwright test --project=setup --project=chromium",
+    "test:ci:multi": "node ./scripts/run-multi-user-ci.mjs",
     "test:headed": "playwright test --headed",
     "test:setup": "playwright test --project=setup",
     "test:report": "playwright show-report"
