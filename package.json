@@ -2,7 +2,13 @@
   "name": "meroshare",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test --project=setup --project=chromium",
+    "test:headed": "playwright test --headed",
+    "test:setup": "playwright test --project=setup",
+    "test:report": "playwright show-report"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -24,5 +30,5 @@
     "url": "https://github.com/KhatiwodaNitesh/meroshare_automation/issues"
   },
   "homepage": "https://github.com/KhatiwodaNitesh/meroshare_automation#readme",
-  "description": ""
+  "description": "Playwright automation for Mero Share flows."
 }
