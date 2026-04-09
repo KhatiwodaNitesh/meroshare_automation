@@ -5,6 +5,7 @@ import { injectSession, readSession } from './support/session';
 import {
     applyForShare,
     filterApplicableIpoShares,
+    getAlreadyAppliedIpoShares,
     getApplicableShares,
 } from './flows/asba';
 import {
@@ -32,10 +33,15 @@ test.describe.serial('Mero Share Automation', () => {
         test.setTimeout(process.env.CI ? 120000 : 90000);
         const allShares = await getApplicableShares(page);
         const applicableShares = filterApplicableIpoShares(allShares);
+        const alreadyAppliedShares = await getAlreadyAppliedIpoShares(page, allShares);
 
-        if (applicableShares.length === 0) {
+        if (applicableShares.length === 0 && alreadyAppliedShares.length === 0) {
             console.log('No shares to apply.');
             return;
+        }
+
+        for (const share of alreadyAppliedShares) {
+            console.log(`Already applied for: ${share.companyName}`);
         }
 
         for (const share of applicableShares) {

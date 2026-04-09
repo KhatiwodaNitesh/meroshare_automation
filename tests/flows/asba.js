@@ -3,6 +3,115 @@ import { MEROSHARE_ENV, appRoute } from '../support/config';
 import { ciLog } from '../support/ci-debug';
 import { selectFirstOption, selectOptionByLabel } from '../support/select';
 
+const APPLY_ISSUE_PATH = '/api/meroShare/companyShare/applicableIssue/';
+const APPLY_SHARE_PATHS = [
+    '/api/meroShare/applicantForm/share/apply',
+    '/api/meroShare/companyShare/',
+];
+
+function isApplicableIssueResponse(response) {
+    return (
+        response.request().method() === 'POST' &&
+        response.url().includes(APPLY_ISSUE_PATH)
+    );
+}
+
+function isShareApplyResponse(response) {
+    if (response.request().method() !== 'POST') {
+        return false;
+    }
+
+    const url = response.url();
+    return APPLY_SHARE_PATHS.some((path) => url.includes(path)) && !url.includes(APPLY_ISSUE_PATH);
+}
+
+function normalizeWhitespace(value) {
+    return value?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function normalizeDomSubGroup(value) {
+    return normalizeWhitespace(value).replace(/\s*\([^)]+\)\s*$/, '').trim();
+}
+
+function normalizeApiShare(share) {
+    return {
+        ...share,
+        companyName: normalizeWhitespace(share.companyName),
+        subGroup: normalizeWhitespace(share.subGroup),
+        shareTypeName: normalizeWhitespace(share.shareTypeName),
+        shareGroupName: normalizeWhitespace(share.shareGroupName),
+    };
+}
+
+function normalizeDomShare(share) {
+    return {
+        ...share,
+        companyName: normalizeWhitespace(share.companyName),
+        subGroup: normalizeDomSubGroup(share.subGroup),
+        shareTypeName: normalizeWhitespace(share.shareTypeName),
+        shareGroupName: normalizeWhitespace(share.shareGroupName),
+        actions: Array.isArray(share.actions)
+            ? share.actions.map((label) => normalizeWhitespace(label))
+            : [],
+    };
+}
+
+function buildShareKey(share) {
+    return [
+        normalizeWhitespace(share.companyName),
+        normalizeWhitespace(share.subGroup),
+        normalizeWhitespace(share.shareTypeName),
+        normalizeWhitespace(share.shareGroupName),
+    ].join('|');
+}
+
+function dedupeShares(shares) {
+    const seenShareKeys = new Set();
+
+    return shares.filter((share) => {
+        const companyName = normalizeWhitespace(share.companyName);
+        if (!companyName) {
+            return false;
+        }
+
+        const shareKey = buildShareKey(share);
+        if (!shareKey || seenShareKeys.has(shareKey)) {
+            return false;
+        }
+
+        seenShareKeys.add(shareKey);
+        return true;
+    });
+}
+
+function isGeneralPublicOrdinaryIpoFromApi(share) {
+    return (
+        normalizeWhitespace(share.shareTypeName) === 'IPO' &&
+        normalizeWhitespace(share.shareGroupName) === 'Ordinary Shares' &&
+        normalizeWhitespace(share.subGroup) === 'For General Public'
+    );
+}
+
+function isGeneralPublicOrdinaryIpoFromDom(share) {
+    return (
+        normalizeWhitespace(share.shareTypeName) === 'IPO' &&
+        normalizeWhitespace(share.shareGroupName) === 'Ordinary Shares' &&
+        normalizeDomSubGroup(share.subGroup) === 'For General Public'
+    );
+}
+
+async function readResponsePayload(response) {
+    try {
+        return await response.json();
+    } catch {
+        try {
+            return await response.text();
+        } catch {
+            return null;
+        }
+    }
+}
+
 export async function goToASBA(page) {
     await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
     const myAsbaLink = page.getByRole('link', { name: /my asba/i });
@@ -13,9 +122,7 @@ export async function goToASBA(page) {
 
 export async function getApplicableShares(page) {
     const responsePromise = page.waitForResponse(
-        (response) =>
-            response.url().includes('/api/meroShare/companyShare/applicableIssue/') &&
-            response.request().method() === 'POST',
+        isApplicableIssueResponse,
         { timeout: 30000 }
     );
 
@@ -48,11 +155,72 @@ export async function getApplicableShares(page) {
 
 export function filterApplicableIpoShares(shares) {
     return shares.filter(
-        (share) =>
-            !share.action &&
-            share.shareTypeName === 'IPO' &&
-            share.shareGroupName === 'Ordinary Shares' &&
-            share.subGroup === 'For General Public'
+        (share) => !share.action && isGeneralPublicOrdinaryIpoFromApi(share)
+    );
+}
+
+async function readShareRows(page) {
+    return page.locator('.company-list').evaluateAll((rows) =>
+        rows.map((row) => {
+            const readText = (selector) =>
+                row.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+
+            return {
+                companyName: readText('.company-name span[tooltip="Company Name"]'),
+                subGroup: readText('.company-name span[tooltip="Sub Group"]'),
+                shareTypeName: readText('.company-name span[tooltip="Share Type"]'),
+                shareGroupName: readText('.company-name span[tooltip="Share Group"]'),
+                actions: Array.from(row.querySelectorAll('.action-buttons button')).map(
+                    (button) => button.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+                ),
+            };
+        })
+    );
+}
+
+async function waitForShareListToRender(page, shares) {
+    const expectedShareKeys = dedupeShares(
+        shares
+            .filter(isGeneralPublicOrdinaryIpoFromApi)
+            .map((share) => normalizeApiShare(share))
+    ).map((share) => buildShareKey(share));
+
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+    if (expectedShareKeys.length === 0) {
+        await page.locator('.company-list').first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+        return;
+    }
+
+    await expect.poll(
+        async () => {
+            const visibleShareKeys = (await readShareRows(page))
+                .map((share) => normalizeDomShare(share))
+                .map((share) => buildShareKey(share));
+
+            return expectedShareKeys.some((shareKey) => visibleShareKeys.includes(shareKey));
+        },
+        {
+            timeout: 15000,
+            message: 'Waiting for ASBA share rows to render',
+        }
+    ).toBe(true);
+}
+
+export async function getAlreadyAppliedIpoShares(page, shares = []) {
+    await waitForShareListToRender(page, shares);
+
+    return dedupeShares(
+        (await readShareRows(page))
+            .map((share) => normalizeDomShare(share))
+            .filter((share) => {
+                const actionLabels = share.actions.map((label) => label.toLowerCase());
+                return (
+                    isGeneralPublicOrdinaryIpoFromDom(share) &&
+                    actionLabels.includes('edit') &&
+                    !actionLabels.includes('apply')
+                );
+            })
     );
 }
 
@@ -126,14 +294,11 @@ async function submitShareApplication(page, share) {
     await expect(applyButton).toBeVisible({ timeout: 15000 });
     await expect(applyButton).toBeEnabled({ timeout: 15000 });
 
-    const seenCompanySharePosts = [];
+    const seenApplyResponses = [];
     let dialogInfo = null;
     const responseListener = (response) => {
-        if (
-            response.request().method() === 'POST' &&
-            response.url().includes('/api/meroShare/companyShare/')
-        ) {
-            seenCompanySharePosts.push({
+        if (isShareApplyResponse(response)) {
+            seenApplyResponses.push({
                 status: response.status(),
                 url: response.url(),
             });
@@ -152,17 +317,14 @@ async function submitShareApplication(page, share) {
     page.on('dialog', dialogListener);
 
     let applyResponse;
+    let applyPayload = null;
     try {
         [applyResponse] = await Promise.all([
-            page.waitForResponse(
-                (response) =>
-                    response.request().method() === 'POST' &&
-                    response.url().includes('/api/meroShare/companyShare/') &&
-                    !response.url().includes('/applicableIssue/'),
-                { timeout: 20000 }
-            ),
+            page.waitForResponse(isShareApplyResponse, { timeout: 20000 }),
             applyButton.click(),
         ]);
+
+        applyPayload = await readResponsePayload(applyResponse);
     } catch (error) {
         const alerts = await page
             .locator('[role="alert"], .toast-message, .error, .invalid-feedback, .mat-error')
@@ -178,7 +340,7 @@ async function submitShareApplication(page, share) {
                 .then((value) => value.length)
                 .catch(() => 0),
             dialogInfo,
-            seenCompanySharePosts,
+            seenApplyResponses,
             alerts: alerts.map((text) => text.trim()).filter(Boolean).slice(0, 6),
         });
         throw error;
@@ -187,7 +349,24 @@ async function submitShareApplication(page, share) {
         page.off('dialog', dialogListener);
     }
 
-    expect(applyResponse.status()).toBe(201);
+    if (applyResponse.status() !== 201) {
+        ciLog('Apply request failed', {
+            companyName: share.companyName,
+            status: applyResponse.status(),
+            url: applyResponse.url(),
+            responseBody: applyPayload,
+        });
+
+        const responseMessage =
+            typeof applyPayload === 'string'
+                ? applyPayload.trim()
+                : applyPayload?.message ?? JSON.stringify(applyPayload);
+
+        throw new Error(
+            `Apply request failed for ${share.companyName}: ${applyResponse.status()}${responseMessage ? ` - ${responseMessage}` : ''}`
+        );
+    }
+
     await expect(page.locator('#transactionPIN')).not.toBeVisible({ timeout: 15000 });
     console.log(`Applied for: ${share.companyName}`);
 }
