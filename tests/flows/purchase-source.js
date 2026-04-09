@@ -10,7 +10,7 @@ export async function openPurchaseSource(page) {
 
 export async function getPurchaseSourceScripts(page) {
     await openPurchaseSource(page);
-    return page.locator('#browsers option').evaluateAll((nodes) =>
+    return page.locator('#script option').evaluateAll((nodes) =>
         nodes
             .map((node) => node.value.trim())
             .filter(Boolean)

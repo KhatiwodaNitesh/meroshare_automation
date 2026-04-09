@@ -51,6 +51,21 @@ function readUserValue(activeUser, fieldName, envName) {
     return activeUser ? requireUserField(activeUser, fieldName) : requireEnv(envName);
 }
 
+function createLazyUserEnv(fieldMap) {
+    const env = {};
+
+    for (const [key, [fieldName, envName]] of Object.entries(fieldMap)) {
+        Object.defineProperty(env, key, {
+            enumerable: true,
+            get() {
+                return readUserValue(ACTIVE_USER, fieldName, envName);
+            },
+        });
+    }
+
+    return Object.freeze(env);
+}
+
 function normalizeOriginUrl(rawUrl) {
     return `${rawUrl.replace(/#.*$/, '').replace(/\/+$/, '')}/`;
 }
@@ -70,18 +85,18 @@ export const SESSION_FILE = RUN_ID
     ? path.join(__dirname, '../../playwright/.auth', RUN_ID, 'session.json')
     : path.join(__dirname, '../../playwright/.auth/session.json');
 
-export const AUTH_ENV = {
-    dpName: readUserValue(ACTIVE_USER, 'dpName', 'DP_NAME'),
-    username: readUserValue(ACTIVE_USER, 'username', 'MS_USERNAME'),
-    password: readUserValue(ACTIVE_USER, 'password', 'MS_PASSWORD'),
-};
+export const AUTH_ENV = createLazyUserEnv({
+    dpName: ['dpName', 'DP_NAME'],
+    username: ['username', 'MS_USERNAME'],
+    password: ['password', 'MS_PASSWORD'],
+});
 
-export const MEROSHARE_ENV = {
-    bankName: readUserValue(ACTIVE_USER, 'bankName', 'DMAT_BANK_NAME'),
-    kitta: readUserValue(ACTIVE_USER, 'kitta', 'KITTA_NO'),
-    crn: readUserValue(ACTIVE_USER, 'crn', 'CRN_NO'),
-    transactionPin: readUserValue(ACTIVE_USER, 'transactionPin', 'TRANS_PIN'),
-};
+export const MEROSHARE_ENV = createLazyUserEnv({
+    bankName: ['bankName', 'DMAT_BANK_NAME'],
+    kitta: ['kitta', 'KITTA_NO'],
+    crn: ['crn', 'CRN_NO'],
+    transactionPin: ['transactionPin', 'TRANS_PIN'],
+});
 
 export function appRoute(route = '') {
     return buildRouteUrl(URL, route);

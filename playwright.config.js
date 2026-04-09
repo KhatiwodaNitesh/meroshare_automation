@@ -6,6 +6,7 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const runId = process.env.MS_RUN_ID?.trim();
+const skipSetup = /^(1|true|yes)$/i.test(process.env.SKIP_SETUP ?? '');
 const reportOutputFolder = runId
     ? path.resolve(__dirname, 'playwright-report', runId)
     : path.resolve(__dirname, 'playwright-report');
@@ -19,7 +20,7 @@ export default defineConfig({
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 1 : 0,
     timeout: 90 * 1000,
-    workers: process.env.CI ? 1 : undefined,
+    workers: 1,
     reporter: [
         [
             'html',
@@ -42,7 +43,14 @@ export default defineConfig({
             testMatch: /auth\.setup\.js/,
         },
         {
+            name: 'smoke',
+            testMatch: /smoke\.spec\.js/,
+            use: { ...devices['Desktop Chrome'] },
+            dependencies: skipSetup ? [] : ['setup'],
+        },
+        {
             name: 'chromium',
+            testMatch: /ms\.spec\.js/,
             use: { ...devices['Desktop Chrome'] },
             dependencies: ['setup'],
         },

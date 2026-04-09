@@ -2,16 +2,45 @@ name: Daily MeroShare Automation
 
 on:
   schedule:
-    - cron: '15 7 * * *'  # Runs daily at 1:00 PM Nepal Time (UTC+5:45)
+    - cron: "15 7 * * *" # Runs daily at 1:00 PM Nepal Time (UTC+5:45)
   workflow_dispatch:
     inputs:
       user_ids:
-        description: 'Comma-separated user IDs to run, for example bhagawoti,nitesh. Leave blank to run all configured secrets.'
+        description: "Comma-separated user IDs to run, for example user-1,user-2 or your custom ids. Leave blank to run all configured users."
         required: false
         type: string
+      run_live:
+        description: "Set to true to continue from smoke checks into the mutating automation job."
+        required: false
+        default: false
+        type: boolean
+
+env:
+  URL: https://meroshare.cdsc.com.np/#/
+  AUTOMATION_USER_1: ${{ secrets.AUTOMATION_USER_1 || '' }}
+  AUTOMATION_USER_2: ${{ secrets.AUTOMATION_USER_2 || '' }}
+  AUTOMATION_USER_3: ${{ secrets.AUTOMATION_USER_3 || '' }}
+  AUTOMATION_USER_4: ${{ secrets.AUTOMATION_USER_4 || '' }}
+  AUTOMATION_USER_5: ${{ secrets.AUTOMATION_USER_5 || '' }}
+  AUTOMATION_USER_6: ${{ secrets.AUTOMATION_USER_6 || '' }}
+  AUTOMATION_USER_7: ${{ secrets.AUTOMATION_USER_7 || '' }}
+  AUTOMATION_USER_8: ${{ secrets.AUTOMATION_USER_8 || '' }}
+  AUTOMATION_USER_9: ${{ secrets.AUTOMATION_USER_9 || '' }}
+  AUTOMATION_USER_10: ${{ secrets.AUTOMATION_USER_10 || '' }}
+  AUTOMATION_USER_11: ${{ secrets.AUTOMATION_USER_11 || '' }}
+  AUTOMATION_USER_12: ${{ secrets.AUTOMATION_USER_12 || '' }}
+  AUTOMATION_USER_13: ${{ secrets.AUTOMATION_USER_13 || '' }}
+  AUTOMATION_USER_14: ${{ secrets.AUTOMATION_USER_14 || '' }}
+  AUTOMATION_USER_15: ${{ secrets.AUTOMATION_USER_15 || '' }}
+  AUTOMATION_USER_16: ${{ secrets.AUTOMATION_USER_16 || '' }}
+  AUTOMATION_USER_17: ${{ secrets.AUTOMATION_USER_17 || '' }}
+  AUTOMATION_USER_18: ${{ secrets.AUTOMATION_USER_18 || '' }}
+  AUTOMATION_USER_19: ${{ secrets.AUTOMATION_USER_19 || '' }}
+  AUTOMATION_USER_20: ${{ secrets.AUTOMATION_USER_20 || '' }}
+  USER_IDS: ${{ github.event.inputs.user_ids || '' }}
 
 jobs:
-  run-automation:
+  smoke:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +50,52 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      # The runner discovers every AUTOMATION_USER_N variable exported in the workflow env.
+      # This smoke gate must pass before the mutating automation job can start.
+      - name: Run non-mutating smoke checks
+        run: npm run test:ci:smoke:multi
+
+      - name: Upload smoke Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-smoke
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload smoke Playwright test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-smoke
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  run-automation:
+    needs: smoke
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.run_live == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -31,21 +104,13 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Run MeroShare automation
-        env:
-          URL: ${{ secrets.URL }}
-          BHAGAWOTI_ENV: ${{ secrets.BHAGAWOTI_ENV }}
-          KHILA_ENV: ${{ secrets.KHILA_ENV }}
-          NABIN_ENV: ${{ secrets.NABIN_ENV }}
-          NISHA_ENV: ${{ secrets.NISHA_ENV }}
-          NITESH_ENV: ${{ secrets.NITESH_ENV }}
-          USER_IDS: ${{ github.event.inputs.user_ids || '' }}
         run: npm run test:ci:multi
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-live
           path: playwright-report/
           if-no-files-found: ignore
           retention-days: 7
@@ -54,7 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: test-results-live
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7

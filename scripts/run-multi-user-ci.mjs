@@ -13,18 +13,12 @@ const REQUIRED_USER_FIELDS = [
     'kitta',
     'transactionPin',
 ];
-const USER_SECRET_ENV_NAMES = [
-    'BHAGAWOTI_ENV',
-    'KHILA_ENV',
-    'NABIN_ENV',
-    'NISHA_ENV',
-    'NITESH_ENV',
-];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const DEFAULT_NPM_SCRIPT = 'test:ci';
 
 dotenv.config({ path: path.resolve(projectRoot, '.env') });
 
@@ -32,19 +26,64 @@ function fail(message) {
     throw new Error(message);
 }
 
+function parseCliArgs() {
+    const args = process.argv.slice(2);
+    let npmScript = DEFAULT_NPM_SCRIPT;
+
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index];
+
+        if (arg === '--script') {
+            const value = args[index + 1]?.trim();
+            if (!value) {
+                fail('Missing value for --script.');
+            }
+
+            npmScript = value;
+            index += 1;
+            continue;
+        }
+
+        fail(`Unknown argument: ${arg}`);
+    }
+
+    return { npmScript };
+}
+
 function requireEnv(name) {
-    const value = process.env[name]?.trim();
+    const value = getEnv(name);
     if (!value) {
         fail(`Missing required environment variable: ${name}`);
     }
     return value;
 }
 
+function getEnv(name) {
+    return process.env[name]?.trim() || null;
+}
+
 function deriveUserId(secretName) {
-    return secretName
-        .replace(/_ENV$/i, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9._-]+/g, '-');
+    // Extract number from AUTOMATION_USER_N pattern
+    const match = secretName.match(/\d+/);
+    if (match) {
+        return `user-${match[0]}`;
+    }
+    return secretName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
+}
+
+function discoverUserSecrets() {
+    // Find all environment variables matching pattern: AUTOMATION_USER_* that have values
+    const userSecretNames = Object.keys(process.env)
+        .filter((key) => /^AUTOMATION_USER_\d+$/.test(key) && process.env[key]?.trim())
+        .sort((a, b) => {
+            const numA = parseInt(a.match(/\d+/)[0], 10);
+            const numB = parseInt(b.match(/\d+/)[0], 10);
+            return numA - numB;
+        });
+
+    console.log(`\n📋 Discovered user configurations: ${userSecretNames.length > 0 ? userSecretNames.length : 'none'}\n`);
+
+    return userSecretNames;
 }
 
 function parseUserSecret(secretName, rawValue) {
@@ -71,19 +110,22 @@ function parseUserSecret(secretName, rawValue) {
 }
 
 function readUsersFromSecrets() {
+    const userSecretNames = discoverUserSecrets();
+
+    if (userSecretNames.length === 0) {
+        fail('No user configurations found. Define at least one secret with pattern AUTOMATION_USER_N (e.g., AUTOMATION_USER_1, AUTOMATION_USER_2)');
+    }
+
     const users = [];
-
-    for (const secretName of USER_SECRET_ENV_NAMES) {
-        const rawValue = process.env[secretName]?.trim();
-        if (!rawValue) continue;
-
-        users.push(parseUserSecret(secretName, rawValue));
+    for (const secretName of userSecretNames) {
+        const rawValue = getEnv(secretName);
+        if (rawValue) {
+            users.push(parseUserSecret(secretName, rawValue));
+        }
     }
 
     if (users.length === 0) {
-        fail(
-            `No user secrets configured. Set at least one of: ${USER_SECRET_ENV_NAMES.join(', ')}`
-        );
+        fail('No user configurations have values. Ensure at least one secret is configured.');
     }
 
     return users;
@@ -143,7 +185,9 @@ function selectUsers(allUsers, requestedUserIds) {
     const missingIds = requestedUserIds.filter((id) => !allUserIds.has(id));
 
     if (missingIds.length > 0) {
-        fail(`Requested user_ids not found in configured secrets: ${missingIds.join(', ')}`);
+        fail(
+            `Requested user_ids not found in configured secrets: ${missingIds.join(', ')}. Available ids: ${allUsers.map((user) => user.id).join(', ')}`
+        );
     }
 
     return allUsers.filter((user) => requestedUserIds.includes(user.id));
@@ -202,7 +246,7 @@ function logSummary(results) {
     }
 }
 
-function runForUser(user) {
+function runForUser(user, npmScript) {
     return new Promise((resolve, reject) => {
         const startedAt = Date.now();
         const childEnv = {
@@ -219,7 +263,7 @@ function runForUser(user) {
         delete childEnv.KITTA_NO;
         delete childEnv.TRANS_PIN;
 
-        const child = spawn(npmCommand, ['run', 'test:ci'], {
+        const child = spawn(npmCommand, ['run', npmScript], {
             cwd: projectRoot,
             env: childEnv,
             stdio: 'inherit',
@@ -238,8 +282,8 @@ function runForUser(user) {
 }
 
 async function main() {
+    const { npmScript } = parseCliArgs();
     requireEnv('URL');
-
     const allUsers = validateUsers(readUsersFromSecrets());
     const requestedUserIds = parseRequestedUserIds();
     const selectedUsers = selectUsers(allUsers, requestedUserIds);
@@ -248,15 +292,17 @@ async function main() {
         fail('No users selected for execution.');
     }
 
-    console.log(`Running MeroShare automation for users: ${selectedUsers.map((user) => user.id).join(', ')}`);
+    console.log(
+        `✅ Running ${npmScript} for ${selectedUsers.length} user(s): ${selectedUsers.map((user) => `\`${user.id}\``).join(', ')}\n`
+    );
 
     const results = [];
     for (const user of selectedUsers) {
-        console.log(`\n=== Starting run for ${user.id} ===`);
+        console.log(`\n🚀 Starting run for ${user.id}...`);
         clearRunArtifacts(user.id);
-        const result = await runForUser(user);
+        const result = await runForUser(user, npmScript);
         results.push(result);
-        console.log(`=== Finished run for ${user.id}: ${renderStatus(result)} ===`);
+        console.log(`✅ Finished run for ${user.id}: ${renderStatus(result)}`);
     }
 
     logSummary(results);
