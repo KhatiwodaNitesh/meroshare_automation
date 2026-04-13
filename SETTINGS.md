@@ -102,9 +102,41 @@ KITTA_NO=100
 TRANS_PIN=1234
 ```
 
+#### Multi-User Configuration
+Used for running the same test suite across multiple users (locally or in CI/CD):
+
+```env
+AUTOMATION_USER_1={"dpName":"NABIL","username":"john.doe","password":"SecurePass123!","bankName":"NABIL","crn":"12345","kitta":"100","transactionPin":"1234"}
+AUTOMATION_USER_2={"dpName":"NIC","username":"jane.doe","password":"AnotherPass456!","bankName":"NIC","crn":"67890","kitta":"200","transactionPin":"5678"}
+```
+
+| Variable | Format | Purpose | Required |
+|----------|--------|---------|----------|
+| `AUTOMATION_USER_N` | JSON object | Configure user N for multi-user runs | Only for `npm run test:ci:*:multi` |
+
+**JSON Object Fields**:
+- `dpName`: Depository Participant name
+- `username`: MeroShare login username
+- `password`: MeroShare login password
+- `bankName`: Bank name for transactions
+- `crn`: Client Registration Number
+- `kitta`: Kitta/unit number
+- `transactionPin`: Transaction PIN
+- `id` (optional): Custom user ID (defaults to `user-N` if not provided)
+
+**Example for Local Testing**:
+```env
+# Single user for smoke tests
+AUTOMATION_USER_1={"dpName":"NIC ASIA BANK LIMITED (13700)","username":"1404286","password":"Nitesh@2026","bankName":"NIC","crn":"sdf","kitta":"10","transactionPin":"1410"}
+
+# Multiple users for parallel execution
+AUTOMATION_USER_2={"dpName":"NABIL","username":"another.user","password":"AnotherPass!","bankName":"NABIL","crn":"54321","kitta":"50","transactionPin":"5678","id":"nabil-user"}
+```
+
 **For CI/CD** (see [GitHub Actions Setup](#github-actions-setup)):
 - Use GitHub Secrets instead
-- Set `AUTOMATION_USER_N` environment variables
+- Set `AUTOMATION_USER_N` as repository secrets
+- Workflow exports them as environment variables
 
 ---
 
@@ -238,18 +270,25 @@ Each secret should be a JSON object with this structure:
 }
 ```
 
-**To Add Secrets**:
-1. Go to GitHub Repository → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Name: `AUTOMATION_USER_1` (or `AUTOMATION_USER_2`, etc.)
-4. Value: JSON string (above)
-5. Click **Add secret**
+**To Add Secrets (Step-by-Step)**:
+1. Go to your GitHub Repository
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Click **"New repository secret"** button
+4. **Name field**: Enter `AUTOMATION_USER_1` (or `AUTOMATION_USER_2`, etc.)
+5. **Value field**: Paste the JSON object (all on one line, no formatting)
+6. Click **"Add secret"**
+7. Repeat for additional users (AUTOMATION_USER_2, AUTOMATION_USER_3, etc.)
 
-**Example for User 1**:
+**Example Secret Creation**:
 ```
 Name: AUTOMATION_USER_1
-Value: {"dpName":"NABIL","username":"***","password":"***","bankName":"NABIL","crn":"12345","kitta":"100","transactionPin":"***","id":"user-1"}
+Value: {"dpName":"NABIL","username":"john.doe","password":"SecurePass123!","bankName":"NABIL","crn":"12345","kitta":"100","transactionPin":"1234"}
 ```
+
+**Supported User Variables** (you can create up to 20):
+- `AUTOMATION_USER_1` through `AUTOMATION_USER_20`
+- The runner automatically discovers any variable with a non-empty value
+- Variables with empty values are skipped
 
 #### Jobs
 
@@ -383,9 +422,92 @@ npm run test:report
 
 ---
 
-## Project Structure
+## Multi-User Setup & Testing
 
+### Local Multi-User Configuration
+
+To test with multiple users locally, add them to your `.env` file:
+
+```env
+# Single user
+AUTOMATION_USER_1={"dpName":"NABIL","username":"user1","password":"pass1","bankName":"NABIL","crn":"11111","kitta":"100","transactionPin":"1111"}
+
+# Multiple users
+AUTOMATION_USER_2={"dpName":"NIC","username":"user2","password":"pass2","bankName":"NIC","crn":"22222","kitta":"200","transactionPin":"2222"}
+AUTOMATION_USER_5={"dpName":"GLOBAL IME","username":"user5","password":"pass5","bankName":"GLOBAL IME","crn":"55555","kitta":"500","transactionPin":"5555"}
 ```
+
+**Note**: Use any number (1-20) for `AUTOMATION_USER_N` - the runner discovers all of them automatically.
+
+### Running Multi-User Tests Locally
+
+```bash
+# Setup auth for all configured users
+npm run test:setup
+
+# Run smoke tests for all users (sequential)
+npm run test:ci:smoke:multi
+
+# Run full automation for all users  
+npm run test:ci:multi
+```
+
+**What happens**:
+1. Script discovers all `AUTOMATION_USER_N` in `.env`
+2. Creates separate session files for each user: `playwright/.auth/user-1/`, `playwright/.auth/user-2/`, etc.
+3. Runs tests sequentially (User 1 → User 2 → User 5 → ...)
+4. Generates separate reports in `playwright-report/user-N/`
+
+**Example Output**:
+```
+📋 Discovered user configurations: 3
+✅ Running test:ci:smoke for 3 user(s): `user-1`, `user-2`, `user-5`
+
+🚀 Starting run for user-1...
+[setup] › tests/auth.setup.js:4:6 › authenticate → Successfully signed in.
+[chromium] tests/smoke.spec.js → ✅ All passed
+
+🚀 Starting run for user-2...
+[setup] › tests/auth.setup.js:4:6 › authenticate → Successfully signed in.
+[chromium] tests/smoke.spec.js → ✅ All passed
+
+🚀 Starting run for user-5...
+...
+
+=== Multi-user run summary ===
+- user-1: passed (exit=0, duration=9s)
+- user-2: passed (exit=0, duration=8s)
+- user-5: passed (exit=0, duration=10s)
+```
+
+### Filtering Users
+
+Run tests for specific users only using the `USER_IDS` environment variable:
+
+```bash
+# Only run AUTOMATION_USER_1 and AUTOMATION_USER_5
+USER_IDS=user-1,user-5 npm run test:ci:smoke:multi
+
+# If you set custom IDs in .env
+USER_IDS=nabil-user,nic-user npm run test:ci:smoke:multi
+```
+
+### Troubleshooting Multi-User Setup
+
+**"No user configurations found"**:
+- Ensure `.env` has `AUTOMATION_USER_N` format (not single-user variables)
+- Check JSON is valid (no trailing commas)
+- Verify required fields: `dpName`, `username`, `password`, `bankName`, `crn`, `kitta`, `transactionPin`
+
+**"Session file not found"**:
+- Run `npm run test:setup` first to create session files
+- Check `playwright/.auth/user-N/session.json` exists
+
+**"Invalid user config"**:
+- Verify JSON is valid: `echo '{"dpName":"TEST",...}' | jq`
+- All values must be strings (not numbers)
+
+---
 meroshare_automation/
 ├── .env                          # Local environment variables (NOT in git)
 ├── .env.example                  # Example configuration template

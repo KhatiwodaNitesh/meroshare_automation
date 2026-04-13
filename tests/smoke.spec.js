@@ -9,8 +9,8 @@ test.beforeEach(async ({ page }) => {
     attachCiPageDebug(page);
     const session = readSession();
     await injectSession(page, session);
-    await page.goto(appRoute(), { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('link', { name: /my asba/i })).toBeVisible({ timeout: 30000 });
+    await page.goto(appRoute(), { waitUntil: 'networkidle' });
+    await page.getByRole('link', { name: /my asba/i }).waitFor({ state: 'visible', timeout: 30000 });
 });
 
 test.afterEach(async ({ page }, testInfo) => {
