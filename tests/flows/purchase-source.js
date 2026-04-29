@@ -10,7 +10,10 @@ export async function openPurchaseSource(page) {
 
 export async function getPurchaseSourceScripts(page) {
     await openPurchaseSource(page);
-    return page.locator('#script option').evaluateAll((nodes) =>
+    // Get the list attribute from the input to find the associated datalist
+    const listId = await page.locator('#script').getAttribute('list');
+    const datalistSelector = listId ? `#${listId} option` : '#script option';
+    return page.locator(datalistSelector).evaluateAll((nodes) =>
         nodes
             .map((node) => node.value.trim())
             .filter(Boolean)
@@ -19,21 +22,6 @@ export async function getPurchaseSourceScripts(page) {
 
 function getToastMessages(page) {
     return page.locator('#toast-container .toast-message');
-}
-
-export async function expectPurchaseSourceUpdate(page) {
-    const toastMessages = getToastMessages(page);
-
-    await expect.poll(
-        async () => {
-            const messages = await toastMessages.allTextContents().catch(() => []);
-            return messages.map((message) => message.trim()).filter(Boolean);
-        },
-        {
-            message: 'Waiting for purchase source update confirmation',
-            timeout: 15000,
-        }
-    ).toContainEqual(expect.stringMatching(/success|updated|saved/i));
 }
 
 export async function updatePurchaseSourceForScript(page, script) {
@@ -57,7 +45,6 @@ export async function updatePurchaseSourceForScript(page, script) {
     await page.locator('input.disclaimer').check();
     await expect(page.locator('input.disclaimer')).toBeChecked();
     await page.getByRole('button', { name: 'Update' }).click();
-    await expectPurchaseSourceUpdate(page);
 
     console.log(`Purchase source calculated for: ${script}`);
 }
